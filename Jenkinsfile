@@ -1,0 +1,60 @@
+pipeline {
+  agent any
+  environment {
+    WORKSPACE = "${env.WORKSPACE}"
+  }
+  tools {
+    maven 'localMaven'
+    jdk 'localJdk'
+  }
+  stages {
+    stage('Build') {
+      steps {
+        sh 'mvn clean package'
+      }
+      post {
+        success {
+          echo ' now Archiving '
+          archiveArtifacts artifacts: '**/*.war'
+        }
+      }
+    }
+    stage('SonarQube Scan') {
+      steps {
+        sh """mvn sonar:sonar \
+  -Dsonar.host.url=http://3.22.118.226:9000 \
+  -Dsonar.login=01466da1ba462ab99e81d4ae599e1c55b4b91e74
+"""
+      }
+    }
+    stage('Upload to Artifactory') {
+      steps {
+        sh "mvn clean deploy -DskipTests"
+      }
+
+    }
+    stage('Deploy to DEV') {
+      environment {
+        HOSTS = "dev"
+      }
+      steps {
+        sh "ansible-playbook ${WORKSPACE}/deploy.yaml --extra-vars \"hosts=$HOSTS workspace_path=$WORKSPACE\""
+      }
+
+    }
+    stage('Approval') {
+      steps {
+        input('Do you want to proceed?')
+      }
+    }
+    stage('Deploy to PROD') {
+      environment {
+        HOSTS = "prod"
+      }
+      steps {
+        sh "ansible-playbook ${WORKSPACE}/deploy.yaml --extra-vars \"hosts=$HOSTS workspace_path=$WORKSPACE\""
+      }
+    }
+  }
+
+}
